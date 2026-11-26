@@ -18,7 +18,7 @@ MODELS = {
            "ආයුබෝවන්! මම බිලි, ඔබගේ රොබෝ සහායකයා. මම ඔබට උදව් කිරීමට සූදානම්."),
 }
 OUT = Path("output")
-MODE = {"standard": (1.0, 1.0), "rugged": (0.93, 1.12)} # length scale, post-gain
+MODE = {"standard": (1.0, 1.0), "rugged": (1.10, 1.12)} # length scale, post-gain
 
 def download_model(lang: str, model_dir: Path):
     from huggingface_hub import hf_hub_download
