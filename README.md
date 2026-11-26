@@ -24,3 +24,8 @@ The manager does not itself provide speech recognition or text-to-speech engines
 ## Browser demo
 
 Open `mobile_test.html` on a browser that supports Web Speech APIs. Select Standard or Rugged, then test microphone and speech. Browser voices and available languages vary by device.
+
+
+## Local Piper TTS package (PC generator + original ESP32)
+
+A standalone, mode-aware Piper voice project is documented in [`local-voice/`](local-voice/). The package ZIP contains the PC generator, male English/Tamil/Sinhala voice configuration, Standard/Rugged profiles, custom-text generator, MicroPython WAV player, M5/M6 example, ESP32 smoke-test script and host tests. Piper runs on PC; the original ESP32 only plays prepared WAV files. Model weights and generated recordings are not included. Physical board playback still requires validation with the actual I2S/DAC wiring.
