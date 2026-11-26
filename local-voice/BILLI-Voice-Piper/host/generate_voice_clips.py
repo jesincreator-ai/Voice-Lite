@@ -23,7 +23,7 @@ MODEL_SPECS = {
         "repo": "rhasspy/piper-voices",
         "relative_path": "en/en_US/joe/medium",
         "model_file": "en_US-joe-medium.onnx",
-        "config_file": "en_US-joe-medium.onnx.onnx.json",
+        "config_file": "en_US-joe-medium.onnx.json",
         "license": "MIT model repository; voice dataset CC0",
         "attribution": "Official Piper en_US Joe medium voice",
     },
