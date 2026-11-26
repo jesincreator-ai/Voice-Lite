@@ -36,7 +36,14 @@ def synthesize(lang: str, mode: str, text: str, output: Path):
     output.parent.mkdir(parents=True, exist_ok=True)
     # Piper API accepts a WAV writer; WAV header parameters are populated by synthesize.
     with wave.open(str(output), "wb") as wav:
-        voice.synthesize(text, wav, length_scale=length_scale)
+        # New Piper releases use synthesize_wav + SynthesisConfig;
+        # older versions expose synthesize(text, wav_file, length_scale=...).
+        if hasattr(voice, "synthesize_wav"):
+            from piper import SynthesisConfig
+            cfg = SynthesisConfig(length_scale=length_scale, normalize_audio=True)
+            voice.synthesize_wav(text, wav, syn_config=cfg)
+        else:
+            voice.synthesize(text, wav, length_scale=length_scale)
     normalize_gain(output, gain)
     validate_wav(output)
     return output
