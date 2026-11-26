@@ -45,6 +45,7 @@ def synthesize(lang: str, mode: str, text: str, output: Path):
         else:
             voice.synthesize(text, wav, length_scale=length_scale)
     normalize_gain(output, gain)
+    resample_to_16k(output)  # ESP32 target sample rate
     validate_wav(output)
     return output
 
@@ -63,9 +64,35 @@ def normalize_gain(path: Path, gain: float):
         dst.setparams(params)
         dst.writeframes(out)
 
+def resample_to_16k(path: Path):
+    # Linear interpolation from the model's 22,050 Hz to ESP32 target 16 kHz.
+    with wave.open(str(path), "rb") as src:
+        params = src.getparams()
+        rate = src.getframerate()
+        raw = src.readframes(src.getnframes())
+    if rate == 16000:
+        return
+    if rate != 22050:
+        raise RuntimeError(f"Unsupported source sample rate: {rate}")
+    samples = struct.unpack("<" + "h" * (len(raw)//2), raw)
+    out_count = round(len(samples) * 16000 / rate)
+    converted = []
+    for i in range(out_count):
+        pos = i * rate / 16000
+        left = int(pos)
+        frac = pos - left
+        right = min(left + 1, len(samples) - 1)
+        val = samples[left] * (1.0 - frac) + samples[right] * frac
+        converted.append(max(-32768, min(32767, round(val))))
+    out = struct.pack("<" + "h" * len(converted), *converted)
+    new_params = (params.nchannels, params.sampwidth, 16000, len(converted), params.comptype, params.compname)
+    with wave.open(str(path), "wb") as dst:
+        dst.setparams(new_params)
+        dst.writeframes(out)
+
 def validate_wav(path: Path):
     with wave.open(str(path), "rb") as w:
-        if w.getnchannels()!=1 or w.getsampwidth()!=2 or w.getframerate() not in (16000,22050):
+        if w.getnchannels()!=1 or w.getsampwidth()!=2 or w.getframerate() != 16000:
             raise RuntimeError(f"Bad WAV format: {w.getparams()}")
         if w.getnframes() < w.getframerate()//5:
             raise RuntimeError("WAV too short/empty (<0.2 sec)")
