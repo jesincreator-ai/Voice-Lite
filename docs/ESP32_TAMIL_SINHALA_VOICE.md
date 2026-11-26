@@ -1,67 +1,88 @@
-# BILLI R-20 Tamil/Sinhala Voice on ESP32-WROOM
+# BILLI R-20 Tamil/Sinhala offline voice — MicroPython runtime
 
-## Root cause
+## What M5 Voice-Lite does
 
-Voice-Lite is a manager: it selects a language and calls an adapter. It does not synthesize Tamil or Sinhala by itself. The browser SpeechSynthesis API also depends on voices installed by the browser/operating system. A language selector cannot add a missing TTS engine.
+Voice-Lite owns language/mode selection and speech adapter coordination. It is not itself a speech synthesizer. The offline WROOM implementation uses recorded WAV phrase clips stored on the SD card. It does not require a local LLM, cloud TTS service or additional language model.
 
-## Choose the correct runtime path
+## Runtime files
 
-### A. Keep the current MicroPython runtime: recorded phrase playback
+- voice_lite.py — M5 language and mode manager, phrase start/stop state, and cooperative tick() service.
+- esp32_wav_speaker.py — non-blocking SD WAV streaming through a supplied MicroPython I2S TX instance.
+- m6_speech_bridge.py — forwards speech start/end and scalar RMS amplitude to M6's existing methods.
+- examples/micropython/main_loop_example.py — shows how the top-level supervisor wires the pieces without transferring ownership of M6/M7/M8 responsibilities.
+- mobile_test.html — browser Voice Lab, M6-style face preview, browser voice diagnostics, and recording/export of phrase WAVs.
 
-This path is implemented and has host tests.
+## Prepare Tamil and Sinhala WAV phrases
 
-1. Open mobile_test.html from HTTPS or localhost.
-2. Select Tamil or Sinhala and choose a phrase.
-3. Use Start recording, speak the displayed phrase, then Stop & save WAV.
-4. Copy the downloaded file to /sd/billi_voice/ta/ or /sd/billi_voice/si/ with its matching filename.
-5. Mount the SD card at /sd and configure machine.I2S for the speaker's I2S DAC/amplifier.
-6. Attach SDWavSpeaker to VoiceLite and call voice.speak_clip("hello").
+1. Open mobile_test.html over HTTPS or localhost.
+2. Select Tamil (ta-IN) or Sinhala (si-LK).
+3. Choose a phrase and read the displayed prompt in the selected language.
+4. Press Start recording, speak clearly, then press Stop & save WAV.
+5. Copy the downloaded file onto the SD card, preserving the file name and folder.
+6. Repeat for each phrase BILLI needs.
 
-Required clip format: RIFF/WAVE, uncompressed PCM, mono, 16-bit, 16,000 Hz.
+Use these folders:
 
-Required clip IDs: hello, ready, listening, repeat, stop, test_complete.
+    /sd/billi_voice/en/
+    /sd/billi_voice/ta/
+    /sd/billi_voice/si/
 
-This path is offline after the clips have been transferred, but only says phrases for which recordings exist. It does not synthesize arbitrary Tamil/Sinhala text. The browser recorder creates a phrase library; it does not train a speech model.
+The browser recorder captures a human voice recording. It does not train neural TTS and does not make a WAV for a phrase unless you record it. The firmware never silently switches to English if a Tamil/Sinhala clip is missing.
 
-Standard/Rugged settings in the MicroPython manager are metadata for prerecorded files. Recorded WAV timbre is not automatically changed by rate/pitch values. Record separate variants if the two modes need different voices.
+## Required audio format
 
-### B. Use arbitrary Tamil/Sinhala text: experimental eSpeak NG Arduino C++
+RIFF/WAVE, uncompressed PCM, mono, 16-bit little-endian, 16,000 Hz. The WAV player validates the format chunk, sample rate, block alignment, byte rate, complete sample frames and data chunk boundaries before starting playback.
 
-See examples/espeak_ng_arduino.
+## Board integration
 
-The upstream Arduino eSpeak NG library's generated header src/espeak-ng-data.h includes Tamil and Sinhala dictionary data and language-rule data. The example registers these arrays through ESpeak.add(), selects "ta" or "si", and sends UTF-8 text to ESpeak.say(). This is real text-to-speech rather than prerecorded phrase lookup.
+The board's existing hardware configuration must mount the SD card at /sd and create an I2S TX object with the same format. Use your confirmed BILLI DAC/amplifier and pin mapping. This repository deliberately does not invent GPIO assignments or reinitialize your existing microphone.
 
-**Runtime compatibility warning:** this library is Arduino C++, while the current BILLI Voice-Lite module is Python/MicroPython. It cannot be imported directly by voice_lite.py. Use it only as a separate Arduino firmware experiment, or port/link it as a native C/C++ module into a custom MicroPython firmware build. That integration has not yet been done.
+The top-level supervisor wires the existing managers like this:
 
-**Flash budget warning:** upstream generated header sizes are:
-- Tamil dictionary: 1,292,353 bytes
-- Sinhala dictionary: 526,644 bytes
-- Combined language dictionaries: 1,818,997 bytes
+    import time
+    from voice_lite import VoiceLite
+    from esp32_wav_speaker import SDWavSpeaker
+    from m6_speech_bridge import M6SpeechBridge
 
-The upstream Arduino port README reports an ESP32 baseline English/minimal sketch using 1,457,411 bytes of flash and 39,616 bytes of global RAM, leaving 288,064 bytes dynamic memory in its measured configuration. Combining Tamil and Sinhala can push a straightforward build above a 3 MB application partition. This is a budget estimate, not a compiled measurement of the BILLI sketch. The language tables live in program flash as PROGMEM, not in RAM; the runtime still needs enough heap/stack. Confirm the module's flash size and use an appropriate partition table. Do not assume the 32 GB SD card increases the ESP32 program flash or RAM.
+    voice = VoiceLite(language="ta", mode="standard")
+    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice")
+    voice.attach_speech_observer(M6SpeechBridge(m6_manager))
 
-The upstream README says SD-backed configuration loading consumes excessive RAM and needs additional PSRAM. Do not use that route for a WROOM without PSRAM.
+    if not voice.speak_clip("hello"):
+        print("Voice error:", voice.last_error)
 
-### Hardware
+    while True:
+        now = time.ticks_ms()
+        frame = m6_manager.tick(now)
+        display_adapter.draw(frame)
+        voice.tick()
+        # M7/M8 work remains in the supervisor's existing order.
+        time.sleep_ms(10)
 
-The Arduino example uses AudioTools I2SStream and refuses to compile until the three BILLI I2S pin macros are supplied. Set them only from the actual wiring map. Use a compatible I2S DAC/amplifier; never connect a passive speaker directly to an ESP32 GPIO.
+machine.I2S.irq() switches MicroPython I2S writes to non-blocking operation. The callback only sets flags; SD reads, RMS calculation, observer callbacks and display updates happen later from the normal cooperative loop. The I2S instance supplied here is expected to be dedicated to TX playback and to support irq().
 
-### Limitations
+## M5/M6 responsibilities
 
-The eSpeak NG formant voice is not a neural voice. Its pronunciation/accent quality must be checked by native Tamil and Sinhala speakers. The sample Arduino sketch tests TTS only; it does not implement STT, Wake-Lite, the M5 manager event loop, M6 display hardware, or M7/M8 safety controls.
+VoiceLite emits a small speech-observer contract. M6SpeechBridge implements that contract against the real M6 API:
 
-The upstream eSpeak NG project is GPL-3.0-or-later. Check license obligations before distributing a firmware image that links it.
+- MotionEmotionManager.begin_speech(now_ms, intensity) when a clip starts.
+- MotionEmotionManager.update_speech_level(now_ms, normalized_rms) as each PCM chunk is queued.
+- MotionEmotionManager.end_speech() when playback completes or is stopped.
 
-## Browser Voice Lab
+Only a scalar amplitude is sent to M6. Raw PCM buffers remain within M5's audio adapter. The face manager continues to own face rendering only. M1/top-level coordination must set the same operating mode on both managers, e.g. voice.set_mode(mode) and m6_manager.set_mode(mode, now_ms). M7 continues to own the four servo axes; M8 remains the safety authority.
 
-The tester separates browser TTS/STT diagnostics from ESP32 hardware playback. It checks for an exact selected-language browser voice and does not silently substitute English. It can record and export WAV phrase clips, download a manifest, and export a test report. It is a visual and phrase-bank tool, not an ESP32 connection or firmware flasher.
+## Playback API and lifecycle
 
-## Host verification
+- voice.set_language("ta-IN") or voice.set_language("si-LK") normalizes locale tags to ta or si.
+- voice.speak_clip("hello") opens the selected language's phrase file and returns immediately. True means the clip started, not that the entire clip has finished.
+- Call voice.tick() frequently (the example uses a 10 ms loop). It performs at most one I2S write attempt per call.
+- voice.state remains speaking until the I2S completion callback has drained the final queued buffer.
+- voice.last_output is None while playing, then True or False after completion.
+- voice.stop() stops reading/sending more samples. Samples already queued in I2S DMA may finish; this is not an instantaneous hardware mute.
+- Missing clips, corrupt WAVs and output failures are reported through voice.last_error.
 
-Run:
+The I2S block uses 1,024-byte chunks by default (about 32 ms of 16 kHz mono 16-bit audio). The cooperative loop must service voice.tick() frequently enough to avoid DMA underflow. The board's ibuf must be configured appropriately for the existing audio hardware.
 
-~~~sh
-python -m unittest discover -s tests -v
-~~~
+## Current limitations
 
-The included tests validate the MicroPython WAV adapter with a fake I2S device. They do not prove output on physical hardware. The experimental Arduino eSpeak NG source is not compiled in the host test suite.
+This is phrase playback, not arbitrary text-to-speech. Fixed phrases must be recorded first. Browser TTS/STT is a separate diagnostic and depends on the device/browser's installed language support; it is not used by the ESP32 playback path. The browser face is a preview, not a physical display connection. Physical sound, microphone coexistence, amplifier wiring, latency and SD performance still require testing on the actual BILLI board.

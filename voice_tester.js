@@ -2,6 +2,14 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const phrases = {
+  en: [
+    ['hello','Hello, BILLI.'],
+    ['ready','I am ready. I am waiting for your command.'],
+    ['listening','I am listening carefully.'],
+    ['repeat','Please repeat that.'],
+    ['stop','Okay. I am stopping now.'],
+    ['test_complete','The voice test is complete. Thank you.']
+  ],
   ta: [
     ['hello','வணக்கம். நான் பில்லி.'],
     ['ready','நான் தயார். உங்கள் கட்டளைக்காக காத்திருக்கிறேன்.'],
@@ -110,7 +118,8 @@ function pcmWav(input,sampleRate){
 }
 let stream=null,context=null,source=null,processor=null,timer=null,started=0;
 function cleanup(){
-  state.recording=false;if(timer)clearInterval(timer);timer=null;
+  state.recording=false;
+  $('lang').disabled=false;$('clip').disabled=false;if(timer)clearInterval(timer);timer=null;
   if(processor){processor.disconnect();processor=null;}
   if(source){source.disconnect();source=null;}
   if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
@@ -123,7 +132,7 @@ async function record(){
     const AudioContextClass=window.AudioContext||window.webkitAudioContext;
     context=new AudioContextClass({sampleRate:16000});await context.resume();
     source=context.createMediaStreamSource(stream);processor=context.createScriptProcessor(4096,1,1);
-    state.chunks=[];state.recording=true;
+    state.chunks=[];state.recording=true;$('lang').disabled=true;$('clip').disabled=true;
     processor.onaudioprocess=e=>{
       if(state.recording)state.chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
       e.outputBuffer.getChannelData(0).fill(0);
