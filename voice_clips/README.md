@@ -2,6 +2,19 @@
 
 M5 Voice-Lite plays prerecorded phrases from the microSD card. The adapter reads small chunks from storage and queues them through a preconfigured MicroPython I2S TX instance using non-blocking I2S.irq() operation.
 
+## Generate Tamil and Sinhala speech automatically
+
+On a Windows/Linux/macOS PC, run from the repository root:
+
+```powershell
+py -m pip install piper-tts
+py tools/generate_voice_clips.py --languages all
+```
+
+The first run downloads the voice models and generates six phrase WAVs in `voice_clips/generated/ta/` and `voice_clips/generated/si/`. Copy these two folders into `billi_voice/` at the root of the microSD card. The robot will then find them under `/sd/billi_voice/ta/` and `/sd/billi_voice/si/`. The ONNX models stay on the PC; only the WAV clips go to the ESP32. After the files are copied, the robot plays the phrases offline.
+
+To generate one language, pass `--languages ta` or `--languages si`. Use `--force` to regenerate existing WAVs. Full setup, model licences and troubleshooting: `tools/README.md`.
+
 ## SD-card layout
 
     /sd/billi_voice/
@@ -27,7 +40,7 @@ M5 Voice-Lite plays prerecorded phrases from the microSD card. The adapter reads
         stop.wav
         test_complete.wav
 
-The exact phrases and suggested text are available from the browser tester. Record the language you need, download the WAV, and copy it to the matching folder with the matching filename. The project does not include fabricated or silent placeholder WAV files; a clip is only playable after a real recording is installed.
+The exact phrases are also shown in the browser tester. The PC-side generator creates the standard Tamil/Sinhala phrases; the optional browser recorder can still create a human voice WAV for any phrase. The project does not include fabricated or silent placeholder WAV files; a clip is only playable after a real recording is installed.
 
 ## Required WAV format
 
