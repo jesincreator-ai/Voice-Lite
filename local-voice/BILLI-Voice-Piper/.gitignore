@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+.venv/
+models/piper/*
+!models/piper/.gitkeep
+build/voice_clips/*
+!build/voice_clips/.gitkeep
+*.wav
