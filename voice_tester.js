@@ -73,7 +73,7 @@ function checkVoices(){
     $('voiceBadge').textContent='No '+language()+' voice';$('voiceBadge').className='badge bad';
     $('speak').disabled=true;$('testVoice').disabled=true;
     $('browserStatus').className='status warn';
-    $('browserStatus').textContent='No '+$('lang').value+' browser TTS voice found. English fallback is disabled. Use the phrase recorder for offline ESP32 playback.';
+    $('browserStatus').textContent='No '+$('lang').value+' browser TTS voice found. English fallback is disabled. Browser TTS is unavailable here. Generate real offline clips on a PC with `py tools/generate_voice_clips.py --languages all`, then load one in the WAV preview below.';
     return;
   }
   matches.forEach((v,i)=>$('voice').add(new Option(v.name+' — '+v.lang,String(i))));
@@ -167,7 +167,20 @@ function download(name,data){
 }
 $('mode').onchange=()=>{setMode();log('Mode',true,$('mode').value);};
 $('lang').onchange=()=>{renderPhrases();checkVoices();log('Language',true,$('lang').value);};
-$('clip').onchange=showPrompt;$('refresh').onclick=checkVoices;
+$('clip').onchange=showPrompt;
+let previewUrl=null;
+$('previewFile').onchange=()=>{
+  const file=$('previewFile').files&&$('previewFile').files[0];
+  if(!file)return;
+  if(previewUrl)URL.revokeObjectURL(previewUrl);
+  previewUrl=URL.createObjectURL(file);
+  const audio=$('previewAudio');audio.src=previewUrl;audio.hidden=false;audio.load();
+  $('recordStatus').className='status ok';
+  $('recordStatus').textContent='Loaded '+file.name+'. Press Play to hear the generated clip.';
+  face('idle','BILLI · Clip ready','Generated WAV preview · '+file.name);
+  log('Load WAV preview',true,file.name);
+};
+$('refresh').onclick=checkVoices;
 $('speak').onclick=()=>speak($('text').value);
 $('testVoice').onclick=()=>speak((phrases[language()]||[['hello','Hello, BILLI.']])[0][1]);
 $('listen').onclick=listen;
