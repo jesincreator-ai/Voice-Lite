@@ -113,6 +113,21 @@ class SDWavSpeakerTests(unittest.TestCase):
         self.assertEqual(len(levels), 2)
         self.assertTrue(all(0 < level <= 1 for level in levels))
 
+    def test_rms_level_is_emitted_when_audio_reaches_queue_head(self):
+        long_samples = b"\\x00\\x10" * 256  # 512 bytes = 16 ms at 16 kHz mono PCM.
+        write_wav(self.path, long_samples)
+        observer = Observer()
+        self.assertTrue(self.player.start_clip("hello", "ta", observer=observer))
+        self.assertTrue(self.player.tick())
+        self.i2s.drain()
+        self.assertTrue(self.player.tick())  # Process callback and queue the RMS segment.
+        self.assertEqual([e for e in observer.events if e[0] == "level"], [])
+        self.clock.advance(5)
+        self.assertTrue(self.player.tick())
+        levels = [e[1] for e in observer.events if e[0] == "level"]
+        self.assertEqual(len(levels), 1)
+        self.assertGreater(levels[0], 0)
+
     def test_nonblocking_write_contract_requires_complete_app_buffer(self):
         class ShortWriter(FakeI2S):
             def write(self, data):
