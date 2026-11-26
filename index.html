@@ -1,1 +1,7 @@
-<!doctype html><html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice Lite Mobile</title><style>body{font:16px system-ui;background:#101820;color:#eee;padding:16px}input,button,select{font:inherit;padding:11px;margin:4px;border-radius:9px}button{background:#67dca0;border:0}pre{white-space:pre-wrap;background:#22303b;padding:12px}</style><h1>Voice Lite</h1><select id="lang"><option value="en-US">English</option><option value="ta-IN">Tamil</option><option value="si-LK">Sinhala</option></select><input id="text" placeholder="Speak or type"><button onclick="listen()">Mic</button><button onclick="speak()">Speak</button><pre id="out">Ready</pre><script>function listen(){let S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S){out.textContent='Speech recognition not supported in this browser';return}let r=new S();r.lang=lang.value;r.onresult=e=>{text.value=e.results[0][0].transcript;out.textContent='Recognized: '+text.value};r.onerror=e=>out.textContent='Recognition error: '+e.error;r.start()}function speak(){if(!window.speechSynthesis){out.textContent='Speech output unavailable';return}let u=new SpeechSynthesisUtterance(text.value);u.lang=lang.value;speechSynthesis.speak(u);out.textContent='Speech synthesis started (device voice)'} </script></html>
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="0;url=mobile_test.html">
+<title>BILLI R-20 Voice Lab</title></head>
+<body><p>Opening <a href="mobile_test.html">BILLI R-20 Voice Lab</a>…</p>
+<script>location.replace(new URL('mobile_test.html',location.href).href);</script></body></html>
