@@ -1,19 +1,32 @@
 # BILLI WROOM Offline Synth (experimental)
 
-Experimental standalone no-network TTS for ESP32-WROOM MicroPython. This is low-resource formant/phoneme synthesis, not neural speech; expect robotic sound. Tamil/Sinhala mappings are starter coverage and need native-speaker review.
+Experimental standalone no-network TTS for ESP32-WROOM MicroPython. This is low-resource formant/phoneme synthesis, **not neural TTS**; expect a synthetic/robotic sound rather than a human-level natural voice. It generates speech frames dynamically without model files, internet, or prerecorded clips.
 
-Goals: dynamic text generation, no external hardware, no models/network/audio assets, bounded 20-ms PCM chunks, mono 8 kHz default, idle when not speaking.
+## Male voice optimization
 
-Limitations: Naturalness is limited; language rules incomplete; actual board CPU/RAM/I2S timing and battery impact must be measured. Unsupported characters are skipped, not silently switched to English.
+- Default speaker profile: **male**, 98 Hz fundamental preset.
+- Standard and Rugged modes adjust pitch multiplier while preserving the selected speaker profile.
+- Emotion presets (calm, happy, curious, sad, sleepy, warning) alter pitch and amplitude scaling.
+- Smooth attack/release envelopes reduce harsh clicks at phoneme boundaries.
+- Sentence token contour adds a slight downward intonation trend.
+- Bounded 20 ms frames, mono PCM16, 8 kHz default (max 320 bytes/frame).
+- Lower default gain (0.12 adapter) helps limit audio energy; actual battery impact depends on amplifier and speaker load.
+- English/Tamil/Sinhala starter mappings; language correctness is not native-speaker validated.
+
+## Limitations and safety
+
+This is a **male-pitch synthetic voice**, not a trained male voice model. Lower pitch alone does not make speech natural. Pronunciation tables are incomplete, and Tamil/Sinhala mappings require native-speaker validation. Physical board CPU/RAM/I2S, speech intelligibility and current draw must be measured. No battery savings or naturalness claims are made without measurements.
+
+Synchronous I2S writes can block; run in a lower-priority task and never inside servo or M8 safety loops.
+
+## Copy to board
+
+Copy phonemes.py, synth.py, and wroom_adapter.py to the device. Reuse the existing I2S TX object:
+
+\`\`\`python
+from wroom_adapter import WroomVoiceAdapter
+voice = WroomVoiceAdapter(i2s_tx, language="en", gain=0.12, mode="standard", voice="male")
+voice.speak("BILLI is ready", emotion="calm")
+\`\`\`
 
 Host tests: python -m unittest discover -s wroom-synth/tests -v
-
-Copy phonemes.py, synth.py, wroom_adapter.py to device. Example with existing I2S TX:
-
-    from wroom_adapter import WroomVoiceAdapter
-    voice = WroomVoiceAdapter(i2s_tx, language='en', sample_rate=8000, gain=0.12)
-    voice.speak('BILLI is ready', emotion='calm')
-
-Run synchronous speech only in a lower-priority task, never in servo or M8 safety loops. ECO starting point: 8 kHz, short utterances, gain <= 0.15. Savings are unmeasured.
-
-Languages: English basic ASCII; Tamil and Sinhala starter grapheme mapping plus romanized fallback. Extend tables only with native-speaker-reviewed test cases.
