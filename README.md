@@ -1,44 +1,47 @@
 # Voice Lite
 
-Lightweight callback-based voice coordinator for BILLI R-20. Supports English (`en`), Tamil (`ta`), and Sinhala (`si`) language selection, Standard/Rugged profile metadata, and MicroPython audio adapters.
+Lightweight BILLI R-20 voice coordination for English, Tamil and Sinhala. Voice-Lite manages language selection, Standard/Rugged profile settings and calls a speech output adapter. It is not itself a speech recognition or speech synthesis engine.
 
-## Tamil/Sinhala support on ESP32-WROOM
+## Tamil/Sinhala output: choose the firmware path
 
-The offline WROOM path uses pre-recorded WAV phrases from microSD. It does **not** claim to synthesize arbitrary Tamil/Sinhala text locally. This is deliberate: Espressif's documented ESP32 speech-synthesis model currently supports Chinese only, while MicroPython provides I2S audio playback for recorded samples.
+### Existing MicroPython path — tested phrase playback
 
-- `voice_lite.py` — M5 language/mode coordination, explicit adapter results, and phrase clip routing.
-- `esp32_wav_speaker.py` — MicroPython SD-card WAV player using an already configured I2S TX object.
-- `mobile_test.html` — responsive Voice Lab, animated M6-style face preview, browser speech diagnostics, and Tamil/Sinhala phrase recorder.
-- `voice_tester.css` / `voice_tester.js` — mobile-first interface and browser recorder.
-- `voice_clips/README.md` — microSD folder layout and playback example.
-- `docs/ESP32_TAMIL_SINHALA_VOICE.md` — complete setup and limitations.
-- `tests/` — host-side regression tests using fake I2S and temporary WAV clips.
+- voice_lite.py accepts locale aliases such as ta-IN and si-LK and routes phrase IDs.
+- esp32_wav_speaker.py streams pre-recorded PCM WAV clips from microSD to an already configured MicroPython machine.I2S TX instance.
+- mobile_test.html is the responsive Voice Lab with an animated M6-style face preview, browser speech diagnostics and a recorder that exports WAV phrase clips.
+- The MicroPython adapter supports fixed phrases, not arbitrary unseen text. Record clips and put them under /sd/billi_voice/ta/ and /sd/billi_voice/si/.
 
-## Browser test
+### Experimental Arduino C++ path — dynamic text TTS
 
-Open `mobile_test.html` through HTTPS or localhost. The tester lists only browser voices matching the selected language. When Tamil/Sinhala browser TTS is not installed, the Speak button is disabled; it will not silently use an English voice. The phrase recorder exports PCM WAV files in the format expected by the ESP32 adapter.
+The examples/espeak_ng_arduino folder contains a proof-of-concept using the upstream Arduino eSpeak NG port. That port's generated PROGMEM data contains Tamil and Sinhala dictionaries and language rules, and its API accepts UTF-8 text.
 
-## ESP32 setup
+**This is not a drop-in MicroPython module.** To run arbitrary Tamil/Sinhala text using eSpeak NG, BILLI's ESP32 voice runtime must be built with Arduino C++ or the engine must be ported into a native C/C++ MicroPython firmware extension. Do not mix this sketch into the current MicroPython application as if it were a Python library.
 
-1. Use a MicroPython firmware build that includes `machine.I2S`.
-2. Mount the microSD card at `/sd` using the BILLI board's existing SD configuration.
-3. Connect a compatible I2S DAC/amplifier and speaker; use the confirmed BILLI GPIO mapping.
-4. Record phrase clips in the tester and copy them to `/sd/billi_voice/ta/` and `/sd/billi_voice/si/`.
-5. Configure I2S TX for 16 kHz, mono, 16-bit PCM and attach `SDWavSpeaker` to `VoiceLite`.
-6. Call `voice.speak_clip("hello")` for the selected language.
+The Arduino route has a substantial flash budget: the Tamil and Sinhala dictionary headers are 1,292,353 and 526,644 bytes respectively, and the upstream README reports 1,457,411 bytes for its baseline ESP32 minimal English build. Measure the final binary and confirm the actual module flash size/partition layout before flashing.
 
-The I2S pin names in the docs are placeholders. Do not guess GPIO values or connect a passive speaker directly to ESP32 GPIO. The browser tester prepares the files but does not directly connect to or flash the board.
+## Voice Lab
 
-## Important limitations
+Open mobile_test.html through HTTPS or localhost. The browser TTS list filters by the exact selected language; when the browser has no Tamil or Sinhala voice, the tester disables the browser Speak action rather than silently falling back to English. The recorder captures a human voice and exports mono 16 kHz, 16-bit PCM WAV clips. It does not train a neural TTS model and does not flash or connect to the ESP32.
 
-This is a recorded phrase-bank builder, **not neural TTS model training**. Arbitrary unseen Tamil/Sinhala text requires a separate supported TTS engine or offline-prepared recordings. Standard/Rugged profile values do not alter prerecorded WAV audio; separate recordings are needed for distinct timbres. The browser face is a display preview, not a live M6 display connection.
+The M6 face is a browser preview only, not a live physical display connection.
+
+## Hardware notes
+
+- Use the BILLI-confirmed I2S GPIO map and a compatible I2S DAC/amplifier.
+- Never connect a passive speaker directly to ESP32 GPIO.
+- MicroPython setup requires the existing SD mount at /sd and machine.I2S support.
+- Arduino eSpeak NG uses its PROGMEM data path; do not load its data files from SD on a WROOM without PSRAM.
 
 ## Tests
 
 Run from the repository root:
 
-```sh
+~~~sh
 python -m unittest discover -s tests -v
-```
+~~~
 
-Host tests do not replace playback testing on the physical ESP32 and its actual DAC/amplifier/speaker.
+The host tests use fake I2S and temporary WAV files. They do not replace a physical ESP32/speaker test. The experimental Arduino eSpeak NG sketch has not been compiled or flashed in this workspace.
+
+## Licensing
+
+The upstream eSpeak NG project is GPL-3.0-or-later. Review its license obligations before distributing a linked firmware image.
