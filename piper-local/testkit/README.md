@@ -21,7 +21,7 @@ Custom text:
 .venv\Scripts\python test_ta_si.py --language si --mode standard --text "ආයුබෝවන්! මම බිලි."
 ```
 
-Generated files in `output/<language>/<mode>/billi_voice_test.wav`.
+Generated files in `output/<language>/<mode>/billi_voice_test.wav`. The script automatically converts model audio from 22.05 kHz to **16 kHz mono PCM16**, the ESP32 playback target format.
 
 ## Exact models
 - Tamil male: `tinisoft/piper-ta_IN-rasa_male-medium` (CC BY 4.0).
