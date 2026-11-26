@@ -1,0 +1,1 @@
+Host tests: python -m unittest discover -s wroom-synth/tests -v. They cover parser examples and PCM stream shape only; they do not prove naturalness, native pronunciation, I2S, power draw, or board scheduling.
