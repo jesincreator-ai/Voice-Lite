@@ -1,5 +1,31 @@
 # BILLI R-20 Tamil/Sinhala offline voice — MicroPython runtime
 
+## Why Tamil/Sinhala was silent
+
+The previous integration accepted `ta` and `si` as language codes but the repository did not contain speech WAV files. The ESP32 adapter is a WAV phrase player, not a text-to-speech engine. It cannot turn arbitrary Tamil/Sinhala Unicode text into sound by itself. The browser's built-in speech service is separate and depends on a matching voice being installed on the phone/PC.
+
+## Fix: synthesize on a PC, play offline on ESP32
+
+On a Windows/Linux/macOS PC, from the Voice-Lite repository root:
+
+```powershell
+py -m pip install piper-tts
+py tools/generate_voice_clips.py --languages all
+```
+
+The first run downloads a Tamil Piper model and a Sri Lankan Sinhala Piper model (and their config files) from Hugging Face. It creates six phrases per language, converting the models' 22,050 Hz output to the player's required mono, signed 16-bit PCM, 16,000 Hz WAV format.
+
+Copy `voice_clips/generated/ta/` and `voice_clips/generated/si/` into `/billi_voice/ta/` and `/billi_voice/si/` at the root of the SD card. With the SD card mounted by MicroPython at `/sd`, the firmware opens `/sd/billi_voice/ta/hello.wav` or `/sd/billi_voice/si/hello.wav`. Do not copy ONNX model files to the ESP32. The robot only needs the generated WAV files, so playback is offline after the copy.
+
+Use `--languages ta` or `--languages si` to generate one language, and `--force` to replace existing output files. Model files stay on the PC under `tools/models/piper/`. See `tools/README.md` for model licences and troubleshooting.
+
+## Voice model sources and attribution
+
+- Tamil: [tinisoft/piper-ta_IN-rasa_female-medium](https://huggingface.co/tinisoft/piper-ta_IN-rasa_female-medium), CC BY 4.0. Attribution: AI4Bharat Rasa dataset; Varadhan et al., “Rasa: Building Expressive Speech Synthesis Systems for Low-resource Settings,” Interspeech 2024.
+- Sinhala: [unicef/piper-si_LK-ashoka-medium](https://huggingface.co/unicef/piper-si_LK-ashoka-medium), MIT.
+
+Review each model card and licence before redistributing model weights or generated audio. Model files are downloaded by the generator and are not bundled in this repository.
+
 ## What M5 Voice-Lite does
 
 Voice-Lite owns language/mode selection and speech adapter coordination. It is not itself a speech synthesizer. The offline WROOM implementation uses recorded WAV phrase clips stored on the SD card. It does not require a local LLM, cloud TTS service or additional language model.
@@ -14,12 +40,11 @@ Voice-Lite owns language/mode selection and speech adapter coordination. It is n
 
 ## Prepare Tamil and Sinhala WAV phrases
 
-1. Open mobile_test.html over HTTPS or localhost.
-2. Select Tamil (ta-IN) or Sinhala (si-LK).
-3. Choose a phrase and read the displayed prompt in the selected language.
+1. Prefer the PC-side Piper workflow above to synthesize all six fixed phrases in each language without recording your own voice.
+2. For a custom human recording, open mobile_test.html over HTTPS or localhost.
+3. Select Tamil (ta-IN) or Sinhala (si-LK), choose a phrase, and read the displayed prompt.
 4. Press Start recording, speak clearly, then press Stop & save WAV.
-5. Copy the downloaded file onto the SD card, preserving the file name and folder.
-6. Repeat for each phrase BILLI needs.
+5. Copy the WAV to the matching language folder on the SD card, preserving its phrase filename.
 
 Use these folders:
 
