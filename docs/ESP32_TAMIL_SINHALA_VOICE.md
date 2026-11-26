@@ -7,7 +7,7 @@ Voice-Lite owns language/mode selection and speech adapter coordination. It is n
 ## Runtime files
 
 - voice_lite.py — M5 language and mode manager, phrase start/stop state, and cooperative tick() service.
-- esp32_wav_speaker.py — non-blocking SD WAV streaming through a supplied MicroPython I2S TX instance.
+- esp32_wav_speaker.py — non-blocking SD WAV streaming through a dedicated MicroPython I2S TX instance. It retains each source buffer until callback and aligns M6 RMS envelopes with queued playback time.
 - m6_speech_bridge.py — forwards speech start/end and scalar RMS amplitude to M6's existing methods.
 - examples/micropython/main_loop_example.py — shows how the top-level supervisor wires the pieces without transferring ownership of M6/M7/M8 responsibilities.
 - mobile_test.html — browser Voice Lab, M6-style face preview, browser voice diagnostics, and recording/export of phrase WAVs.
@@ -45,7 +45,7 @@ The top-level supervisor wires the existing managers like this:
     from m6_speech_bridge import M6SpeechBridge
 
     voice = VoiceLite(language="ta", mode="standard")
-    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice")
+    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice", i2s_ibuf_bytes=20000)  # Match the I2S constructor ibuf
     voice.attach_speech_observer(M6SpeechBridge(m6_manager))
 
     if not voice.speak_clip("hello"):
@@ -66,7 +66,7 @@ machine.I2S.irq() switches MicroPython I2S writes to non-blocking operation. The
 VoiceLite emits a small speech-observer contract. M6SpeechBridge implements that contract against the real M6 API:
 
 - MotionEmotionManager.begin_speech(now_ms, intensity) when a clip starts.
-- MotionEmotionManager.update_speech_level(now_ms, normalized_rms) as each PCM chunk is queued.
+- MotionEmotionManager.update_speech_level(now_ms, normalized_rms) as each chunk reaches its estimated playback position in the I2S queue.
 - MotionEmotionManager.end_speech() when playback completes or is stopped.
 
 Only a scalar amplitude is sent to M6. Raw PCM buffers remain within M5's audio adapter. The face manager continues to own face rendering only. M1/top-level coordination must set the same operating mode on both managers, e.g. voice.set_mode(mode) and m6_manager.set_mode(mode, now_ms). M7 continues to own the four servo axes; M8 remains the safety authority.
@@ -75,8 +75,8 @@ Only a scalar amplitude is sent to M6. Raw PCM buffers remain within M5's audio 
 
 - voice.set_language("ta-IN") or voice.set_language("si-LK") normalizes locale tags to ta or si.
 - voice.speak_clip("hello") opens the selected language's phrase file and returns immediately. True means the clip started, not that the entire clip has finished.
-- Call voice.tick() frequently (the example uses a 10 ms loop). It performs at most one I2S write attempt per call.
-- voice.state remains speaking until the I2S completion callback has drained the final queued buffer.
+- Call voice.tick() frequently (the example uses a 10 ms loop). It performs at most one I2S write scheduling step per call.
+- voice.state remains speaking until the final application-buffer callback and configured I2S DMA tail have completed.
 - voice.last_output is None while playing, then True or False after completion.
 - voice.stop() stops reading/sending more samples. Samples already queued in I2S DMA may finish; this is not an instantaneous hardware mute.
 - Missing clips, corrupt WAVs and output failures are reported through voice.last_error.

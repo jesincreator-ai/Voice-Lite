@@ -21,22 +21,30 @@ def write_wav(path, samples=b"\x01\x00\x02\x00", channels=1, bits=16, rate=16000
         handle.write(b"RIFF" + struct.pack("<I", len(body)) + body)
 
 
+class FakeClock:
+    def __init__(self): self.now = 0
+    def __call__(self): return self.now
+    def advance(self, ms): self.now += ms
+
+
 class FakeI2S:
-    def __init__(self, max_write=None):
-        self.written = bytearray()
-        self.max_write = max_write
+    """Holds the exact object passed to async write until its callback."""
+    def __init__(self):
         self.callback = None
+        self.pending = None
+        self.written = bytearray()
         self.calls = 0
-    def irq(self, callback):
-        self.callback = callback
+    def irq(self, callback): self.callback = callback
     def write(self, data):
+        if self.pending is not None:
+            raise AssertionError("I2S buffer submitted before previous callback")
         self.calls += 1
-        count = len(data) if self.max_write is None else min(len(data), self.max_write)
-        count -= count % 2
-        self.written.extend(data[:count])
-        return count
+        self.pending = data
+        return len(data)
     def drain(self):
-        if self.callback:
+        if self.pending is not None:
+            self.written.extend(self.pending)
+            self.pending = None
             self.callback(self)
 
 
@@ -55,48 +63,71 @@ class SDWavSpeakerTests(unittest.TestCase):
         self.path = os.path.join(self.tmp.name, "ta", "hello.wav")
         self.samples = b"\x00\x10\x00\x20\x00\x30\x00\x40"
         write_wav(self.path, self.samples, extra_chunks=[b"JUNK" + struct.pack("<I", 3) + b"abc\x00"])
+        self.clock = FakeClock()
         self.i2s = FakeI2S()
-        self.player = SDWavSpeaker(self.i2s, self.tmp.name, chunk_bytes=4)
+        self.player = SDWavSpeaker(
+            self.i2s, self.tmp.name, chunk_bytes=4,
+            i2s_ibuf_bytes=512, clock_ms=self.clock,
+        )
 
-    def tearDown(self):
-        self.tmp.cleanup()
+    def tearDown(self): self.tmp.cleanup()
 
-    def _finish(self, player, i2s):
-        for _ in range(20):
-            if not player.tick():
+    def _finish(self, player=None, i2s=None):
+        player = player or self.player
+        i2s = i2s or self.i2s
+        for _ in range(100):
+            active = player.tick()
+            if not active:
                 return
             i2s.drain()
+            self.clock.advance(20)
         self.fail("Playback did not complete")
 
-    def test_streams_clip_in_cooperative_nonblocking_chunks(self):
+    def test_streams_clip_cooperatively_and_retains_inflight_buffer(self):
         observer = Observer()
         self.assertTrue(self.player.start_clip("hello", "ta-IN", observer=observer))
         self.assertTrue(self.player.tick())
-        self.assertEqual(bytes(self.i2s.written), self.samples[:4])
+        self.assertIs(self.player._inflight_buffer, self.i2s.pending)
+        first_buffer = self.i2s.pending
+        self.assertEqual(first_buffer, self.samples[:4])
         self.assertTrue(self.player.tick())
         self.assertEqual(self.i2s.calls, 1)
+        self.assertIs(self.player._inflight_buffer, first_buffer)
+
+        self.i2s.drain()
+        # The IRQ only queues a scheduler callback; normal-loop tick processes it.
+        self.assertIs(self.player._inflight_buffer, first_buffer)
+        self.assertTrue(self.player.tick())
+        self.assertEqual(self.i2s.pending, self.samples[4:])
+        self.assertIs(self.player._inflight_buffer, self.i2s.pending)
         self.i2s.drain()
         self.assertTrue(self.player.tick())
-        self.assertEqual(bytes(self.i2s.written), self.samples)
-        self.i2s.drain()
+        self.assertTrue(self.player.tick())
+        self.clock.advance(self.player.drain_ms)
         self.assertFalse(self.player.tick())
+
+        self.assertEqual(bytes(self.i2s.written), self.samples)
         self.assertEqual(observer.events[0], ("start",))
         self.assertEqual(observer.events[-1], ("end",))
         levels = [event[1] for event in observer.events if event[0] == "level"]
         self.assertEqual(len(levels), 2)
         self.assertTrue(all(0 < level <= 1 for level in levels))
 
-    def test_retries_partial_sample_aligned_i2s_writes(self):
-        partial = FakeI2S(max_write=2)
-        player = SDWavSpeaker(partial, self.tmp.name, chunk_bytes=8)
+    def test_nonblocking_write_contract_requires_complete_app_buffer(self):
+        class ShortWriter(FakeI2S):
+            def write(self, data):
+                self.pending = data
+                return max(0, len(data) - 2)
+        short = ShortWriter()
+        player = SDWavSpeaker(short, self.tmp.name, chunk_bytes=8, i2s_ibuf_bytes=512, clock_ms=self.clock)
         self.assertTrue(player.start_clip("hello", "ta"))
-        self._finish(player, partial)
-        self.assertEqual(bytes(partial.written), self.samples)
+        self.assertTrue(player.tick())
+        self.assertIn("complete WAV chunk", player.last_error)
 
     def test_supports_fmt_chunk_after_data_chunk(self):
         write_wav(self.path, self.samples, fmt_after_data=True)
         self.assertTrue(self.player.start_clip("hello", "ta"))
-        self._finish(self.player, self.i2s)
+        self._finish()
         self.assertEqual(bytes(self.i2s.written), self.samples)
 
     def test_rejects_path_traversal(self):
@@ -135,15 +166,27 @@ class SDWavSpeakerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "I2S.irq"):
             SDWavSpeaker(BlockingOnly(), self.tmp.name)
 
-    def test_stop_closes_playback_and_notifies_observer(self):
+    def test_stop_retains_inflight_buffer_until_callback_and_drain_tail(self):
         observer = Observer()
         self.assertTrue(self.player.start_clip("hello", "ta", observer=observer))
         self.assertTrue(self.player.tick())
+        buffer_ref = self.player._inflight_buffer
         self.player.stop()
+        self.assertTrue(self.player._active)
+        self.assertIs(self.player._inflight_buffer, buffer_ref)
+        self.assertNotEqual(observer.events[-1], ("end",))
+        self.i2s.drain()
+        self.assertTrue(self.player.tick())
+        self.assertTrue(self.player._active)
+        self.clock.advance(self.player.drain_ms)
         self.assertFalse(self.player.tick())
         self.assertFalse(self.player._active)
         self.assertEqual(observer.events[-1], ("end",))
-        self.assertIn("may finish", self.player.last_error)
+        self.assertIn("Playback stopped", self.player.last_error)
+
+    def test_default_i2s_tail_matches_documented_20000_byte_buffer(self):
+        player = SDWavSpeaker(FakeI2S(), self.tmp.name)
+        self.assertEqual(player.drain_ms, 625)
 
 
 if __name__ == "__main__":

@@ -227,17 +227,19 @@ class VoiceLite:
             return False
 
     def stop(self):
-        """Stop scheduling additional samples and return M5 to idle."""
+        """Stop queuing samples; keep servicing an in-flight I2S buffer/tail."""
         stopper = getattr(self.speaker, "stop", None) if self.speaker else None
         if callable(stopper):
             try:
                 stopper()
             except Exception as exc:
                 self.last_error = str(exc)
-        was_playing = self._async_playback
-        self._async_playback = False
-        self.state = "idle"
-        if was_playing:
+        if self._async_playback:
+            # The adapter may still own a buffer referenced by the I2S worker.
+            # Keep M5 in speaking state until tick() observes safe completion.
             self.last_output = False
             if self.last_error is None:
                 self.last_error = getattr(self.speaker, "last_error", None) or "Playback stopped"
+            return True
+        self.state = "idle"
+        return True

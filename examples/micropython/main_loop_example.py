@@ -11,9 +11,12 @@ from esp32_wav_speaker import SDWavSpeaker
 from m6_speech_bridge import M6SpeechBridge
 
 
-def create_voice_runtime(i2s_tx, m6_manager, language="en", mode="standard"):
+def create_voice_runtime(i2s_tx, m6_manager, language="en", mode="standard",
+                          i2s_ibuf_bytes=20000):
     voice = VoiceLite(language=language, mode=mode)
-    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice")
+    voice.speaker = SDWavSpeaker(
+        i2s_tx, root="/sd/billi_voice", i2s_ibuf_bytes=i2s_ibuf_bytes
+    )
     voice.attach_speech_observer(M6SpeechBridge(m6_manager))
     if not set_operating_mode(mode, voice, m6_manager):
         raise ValueError("Could not synchronize M5/M6 operating mode")
@@ -38,9 +41,9 @@ def service_voice_and_face(voice, m6_manager, display_adapter, now_ms=None):
     """Call once from the robot's cooperative main loop (e.g. every 10–20 ms)."""
     if now_ms is None:
         now_ms = time.ticks_ms() if hasattr(time, "ticks_ms") else int(time.time() * 1000)
+    voice.tick()  # Forward M5 RMS envelope to M6 before rendering this frame.
     frame = m6_manager.tick(now_ms)
     display_adapter.draw(frame)
-    voice.tick()  # One bounded, non-blocking I2S scheduling step after rendering.
 
 
 # Integration sketch (the actual top-level supervisor supplies hardware):

@@ -52,7 +52,7 @@ The top-level supervisor wires the pieces:
     from m6_speech_bridge import M6SpeechBridge
 
     voice = VoiceLite(language="ta", mode="standard")
-    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice")
+    voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice", i2s_ibuf_bytes=20000)  # Match I2S constructor ibuf
     voice.attach_speech_observer(M6SpeechBridge(m6_manager))
 
     voice.speak_clip("hello")
@@ -74,7 +74,7 @@ M5 sends scalar RMS amplitude values to the M6 bridge for mouth animation. Raw P
 
 - voice.speak_clip("hello") starts a clip and returns immediately.
 - Call voice.tick() regularly; it performs at most one small non-blocking I2S write per call.
-- voice.state is speaking while audio is queued/playing and returns to idle after the final I2S completion callback.
+- voice.state is speaking while audio is queued/playing and returns to idle after the final I2S application-buffer callback and configured DMA tail period.
 - voice.last_output is None while playing and becomes True/False after completion.
 - voice.stop() stops sending additional SD chunks. Audio already queued in the I2S DMA buffer may finish; it is not an instantaneous amplifier mute.
 - A missing clip or unsupported WAV format is reported in voice.last_error; the player never silently falls back to English.

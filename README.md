@@ -27,4 +27,4 @@ From the repository root:
 
     python -m unittest discover -s tests -v
 
-Host tests use fake I2S and temporary WAV files. They validate parsing, language routing, cooperative playback state, partial writes, stop/error handling and the M6 observer contract. They do not replace physical testing on the ESP32-WROOM.
+Host tests use fake I2S and temporary WAV files. They validate parsing, language routing, application-buffer lifetime through IRQ completion, cooperative playback state, tail-drain timing, stop/error handling and the M6 observer contract. They do not replace physical testing on the ESP32-WROOM.

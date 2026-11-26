@@ -113,23 +113,31 @@ class VoiceLiteTests(unittest.TestCase):
         self.assertEqual(observer.events, [("start",), ("end",)])
         self.assertEqual(voice.state, "idle")
 
-    def test_stop_delegates_and_clears_async_state(self):
+    def test_stop_keeps_servicing_async_adapter_until_safe_completion(self):
         class Adapter:
             last_error = None
             stopped = False
+            ticks = 0
             def start_clip(self, *args, **kwargs): return True
-            def tick(self): return True
+            def tick(self):
+                self.ticks += 1
+                return self.ticks == 1
             def stop(self):
                 self.stopped = True
-                self.last_error = "stopped"
+                self.last_error = "Playback stopped"
         voice = VoiceLite()
         adapter = Adapter()
         voice.speaker = adapter
         self.assertTrue(voice.speak_clip("hello"))
-        voice.stop()
+        self.assertTrue(voice.stop())
         self.assertTrue(adapter.stopped)
+        self.assertEqual(voice.state, "speaking")
+        self.assertTrue(voice.tick())
+        self.assertEqual(voice.state, "speaking")
+        self.assertFalse(voice.tick())
         self.assertEqual(voice.state, "idle")
         self.assertFalse(voice.last_output)
+        self.assertEqual(voice.last_error, "Playback stopped")
 
     def test_raw_text_never_falls_back_to_phrase_playback(self):
         class Adapter:
