@@ -11,9 +11,10 @@ The production path in this branch is **recorded PCM WAV phrase playback** from 
 - m6_speech_bridge.py — maps audio lifecycle and scalar RMS amplitude to the actual M6 face-manager speech methods.
 - examples/micropython/main_loop_example.py — top-level supervisor wiring pattern.
 - voice_clips/README.md — SD-card phrase library layout and audio format.
-- mobile_test.html — browser Voice Lab and phrase recorder.
+- tools/generate_voice_clips.py — PC-side Piper generator for real Tamil/Sinhala speech WAVs.
+- mobile_test.html — browser Voice Lab, generated-WAV preview and optional phrase recorder.
 
-The system does not install or run an extra LLM, does not require online speech generation, and does not fabricate speech when a language clip is missing. Record the phrases you need on the Voice Lab page, copy WAV files to /sd/billi_voice/en/, /sd/billi_voice/ta/ or /sd/billi_voice/si/, then call voice.speak_clip("hello").
+The earlier branch accepted Tamil/Sinhala language codes but had no speech WAV assets, so those languages could be selected without producing sound. Generate real Tamil and Sinhala clips on a PC with `py -m pip install piper-tts` followed by `py tools/generate_voice_clips.py --languages all`. The script converts the generated files to the ESP32 player's required 16 kHz mono PCM16 format. Copy `voice_clips/generated/ta/` and `voice_clips/generated/si/` to `/billi_voice/` on the SD card. The WROOM plays these phrases offline and does not load the PC-side ONNX models or run an LLM. See `tools/README.md` for the exact setup.
 
 ## Cooperative integration
 
