@@ -15,6 +15,8 @@ def create_voice_runtime(i2s_tx, m6_manager, language="en", mode="standard"):
     voice = VoiceLite(language=language, mode=mode)
     voice.speaker = SDWavSpeaker(i2s_tx, root="/sd/billi_voice")
     voice.attach_speech_observer(M6SpeechBridge(m6_manager))
+    if not set_operating_mode(mode, voice, m6_manager):
+        raise ValueError("Could not synchronize M5/M6 operating mode")
     return voice
 
 
